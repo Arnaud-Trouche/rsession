@@ -1,15 +1,23 @@
 package org.math.R;
 
 import java.io.File;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
+import java.text.DecimalFormatSymbols;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import javax.script.ScriptException;
 
 import org.junit.Test;
 import org.math.R.Rsession.RException;
 
 import static org.junit.Assert.*;
+import org.junit.Before;
+import static org.math.R.RserveSession.asRList;
+import static org.math.R.Rsession.toRcode;
 
 /**
  * Test the converter r->js of the class {@link R2jsSession}
@@ -23,6 +31,11 @@ public class R2jsSessionTest {
     final double epsilon = 1e-12;
     R2jsSession engine = R2jsSession.newInstance(new RLogSlf4j(), null);
 
+  @Before
+    public void setUp() throws Exception {
+    engine.debug_js = true;
+    }
+    
     @Test
     public void test2Sessions() throws Rsession.RException { // was failing for f <- function(){return(list(a=1,b=2))}; f()[['a']] called in _TWO_ engines
         engine.debug_js = true;
@@ -86,14 +99,63 @@ public class R2jsSessionTest {
     }
 
     @Test
+    public void testSys() throws Rsession.RException, UnknownHostException {
+        System.err.println("================= testSys ===============");
+
+        System.err.println("java.version: " + System.getProperty("java.version"));
+        engine.log("java.version: " + System.getProperty("java.version"), RLog.Level.INFO);
+//        Map<String, String> infos = new HashMap<String, String>();
+//        infos.put("nodename", "'" + InetAddress.getLocalHost().getHostName() + "'");
+//        engine.voidEval("Sys__info = function() {return(" + toRcode(infos) + ")}");
+//        String nodename = (String) engine.eval("Sys.info()[['nodename']]");
+//        assert nodename != null && nodename.length() > 0 : "Cannot get nodename";
+        
+        engine.voidEval("Sys__info = function() {return("+asRList(newMap(
+                        "nodename",InetAddress.getLocalHost().getHostName(),
+                        "sysname",System.getProperty("os.name"),
+                        "release","?",
+                        "version",System.getProperty("os.version"),
+                        "user",System.getProperty("user.name")                        
+                        ))+")}");
+                 engine.voidEval("Sys__getenv = function(v) {env=list('R_HOME'='')\nreturn(env[v])}");//+toRcode(System.getenv())+")\nreturn(env[v])}");
+                 engine.voidEval("options = function() {return("+asRList(newMap(
+                        "OutDec",DecimalFormatSymbols.getInstance().getDecimalSeparator()
+                        ))+")}");
+            
+        String nodename = (String) engine.eval("Sys.info()[['nodename']]");
+        assert nodename != null && nodename.length() > 0 : "Cannot get nodename";
+
+        System.err.println("//////////////////// testSys //////////////////////");
+    }
+
+    public static Map newMap(Object... o) {
+        Map m = new HashMap();
+        for (int i = 0; i < o.length / 2; i++) {
+            m.put(o[2 * i], o[2 * i + 1]);
+        }
+        return m;
+    }
+
+    String asRList(Map m) {
+        if (m.isEmpty()) {
+            return "list()";
+        }
+        String l = "list(";
+        for (Object k : m.keySet()) {
+            l = l + k + "='" + m.get(k) + "',";
+        }
+        return l.substring(0, l.length() - 1) + ")";
+    }
+
+    @Test
     public void testBasicSyntaxes() throws Rsession.RException {
         // Check infinity is available
-        assert Double.isInfinite((Double)engine.eval("a <- Inf"));
-        assert Double.isInfinite((Double)engine.eval("a <- -Inf"));
+        assert Double.isInfinite((Double) engine.eval("a <- Inf"));
+        assert Double.isInfinite((Double) engine.eval("a <- -Inf"));
 
         engine.voidEval("a <- NaN");
-        assert Double.isNaN((Double)engine.eval("a")): engine.eval("a");
-        assert Double.isNaN((Double)engine.eval("a+1")): engine.eval("a");
+        assert Double.isNaN((Double) engine.eval("a")) : engine.eval("a");
+        assert Double.isNaN((Double) engine.eval("a+1")): engine.eval("a");
 
         engine.voidEval("a = 1");
         assert (Double) engine.eval("a") == 1;
